@@ -1,0 +1,120 @@
+version: "3.7"
+
+services:
+  traefik:
+    image: "traefik:v2.11"
+    restart: always
+    command:
+      - "--api=true"
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.mytlschallenge.acme.tlschallenge=true"
+      - "--certificatesresolvers.mytlschallenge.acme.email=${SSL_EMAIL}"
+      - "--certificatesresolvers.mytlschallenge.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - traefik_data:/letsencrypt
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n
+    restart: always
+    ports:
+      - "127.0.0.1:5678:5678"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.n8n.rule=Host(`${SUBDOMAIN}.${DOMAIN_NAME}`)
+      - traefik.http.routers.n8n.tls=true
+      - traefik.http.routers.n8n.entrypoints=web,websecure
+      - traefik.http.routers.n8n.tls.certresolver=mytlschallenge
+      - traefik.http.middlewares.n8n.headers.SSLRedirect=true
+      - traefik.http.middlewares.n8n.headers.STSSeconds=315360000
+      - traefik.http.middlewares.n8n.headers.browserXSSFilter=true
+      - traefik.http.middlewares.n8n.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.n8n.headers.forceSTSHeader=true
+      - traefik.http.middlewares.n8n.headers.SSLHost=${DOMAIN_NAME}
+      - traefik.http.middlewares.n8n.headers.STSIncludeSubdomains=true
+      - traefik.http.middlewares.n8n.headers.STSPreload=true
+      - traefik.http.routers.n8n.middlewares=n8n@docker
+    environment:
+      - N8N_HOST=${SUBDOMAIN}.${DOMAIN_NAME}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - NODE_ENV=production
+      - WEBHOOK_URL=https://${SUBDOMAIN}.${DOMAIN_NAME}/
+      - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - /local-files:/files
+
+  postgres:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: dripscan
+      POSTGRES_USER: dripscan
+      POSTGRES_PASSWORD: ${MEDUSA_DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  medusa:
+    build:
+      context: /root/dripscan-poc/backend/medusa/dripscan-data
+    restart: always
+    depends_on:
+      - postgres
+      - redis
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.medusa.rule=Host(`${MEDUSA_SUBDOMAIN}.${MEDUSA_DOMAIN}`)
+      - traefik.http.routers.medusa.tls=true
+      - traefik.http.routers.medusa.entrypoints=web,websecure
+      - traefik.http.routers.medusa.tls.certresolver=mytlschallenge
+      - traefik.http.services.medusa.loadbalancer.server.port=9000
+    environment:
+      DATABASE_URL: postgres://dripscan:${MEDUSA_DB_PASSWORD}@postgres:5432/dripscan?sslmode=disable
+      JWT_SECRET: ${MEDUSA_JWT_SECRET}
+      COOKIE_SECRET: ${MEDUSA_COOKIE_SECRET}
+      STORE_CORS: https://dripscan.com,https://beta.dripscan.com,https://dripscan.vercel.app
+      ADMIN_CORS: https://dripscan.com,https://beta.dripscan.com,https://dripscan.vercel.app
+      AUTH_CORS: https://dripscan.com,https://beta.dripscan.com,https://dripscan.vercel.app
+      R2_PUBLIC_URL: ${R2_PUBLIC_URL}
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID}
+      R2_BUCKET: ${R2_BUCKET}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
+      STRIPE_API_KEY: ${STRIPE_API_KEY}
+      NODE_ENV: production
+      MEDUSA_DISABLE_ADMIN: "true"
+      PAYPAL_CLIENT_ID: ${PAYPAL_CLIENT_ID}
+      PAYPAL_CLIENT_SECRET: ${PAYPAL_CLIENT_SECRET}
+      PAYPAL_IS_SANDBOX: ${PAYPAL_IS_SANDBOX}
+      REDIS_URL: redis://redis:6379
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL}
+      STOREFRONT_URL: ${STOREFRONT_URL}
+
+
+    volumes:
+      - /root/dripscan-poc/backend/medusa/dripscan-data/medusa-config.js:/app/medusa-config.js
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    volumes:
+      - redis_data:/data
+
+volumes:
+  traefik_data:
+    external: true
+  n8n_data:
+    external: true
+  postgres_data:
+  redis_data:

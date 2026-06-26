@@ -1,0 +1,7 @@
+.env
+.env.*
+!.env.example
+*.bak
+acme.json
+*.pem
+*.key
