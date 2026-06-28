@@ -66,7 +66,7 @@ services:
 
   medusa:
     build:
-      context: /root/dripscan-poc/backend/medusa/dripscan-data
+    context: ./medusa
     restart: always
     depends_on:
       - postgres
@@ -82,9 +82,9 @@ services:
       DATABASE_URL: postgres://dripscan:${MEDUSA_DB_PASSWORD}@postgres:5432/dripscan?sslmode=disable
       JWT_SECRET: ${MEDUSA_JWT_SECRET}
       COOKIE_SECRET: ${MEDUSA_COOKIE_SECRET}
-      STORE_CORS: https://dripscan.com,https://beta.dripscan.com,https://dripscan.vercel.app
-      ADMIN_CORS: https://dripscan.com,https://beta.dripscan.com,https://dripscan.vercel.app
-      AUTH_CORS: https://dripscan.com,https://beta.dripscan.com,https://dripscan.vercel.app
+      STORE_CORS: ${STORE_CORS}
+      ADMIN_CORS: ${ADMIN_CORS}
+      AUTH_CORS: ${AUTH_CORS}
       R2_PUBLIC_URL: ${R2_PUBLIC_URL}
       R2_ACCOUNT_ID: ${R2_ACCOUNT_ID}
       R2_BUCKET: ${R2_BUCKET}
@@ -103,8 +103,7 @@ services:
 
 
     volumes:
-      - /root/dripscan-poc/backend/medusa/dripscan-data/medusa-config.js:/app/medusa-config.js
-
+      - ./medusa/medusa-config.js:/app/medusa-config.js
   redis:
     image: redis:7-alpine
     restart: always
